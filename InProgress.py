@@ -1,163 +1,133 @@
-import RPi.GPIO as GPIO  #imports the Raspberry Pi GPIO library for controlling GPIO pins
-import threading  #imports the threading module to run functions in parallel
-import time  #imports the time module for time-related functions
-import random  #imports the random module to generate random numbers
-import os  #imports the os module to interact with the operating system
-from subprocess import call  #imports the call function to run system commands
+# original code, added for loop in initialize gpio to detect rising voltage as start
+import RPi.GPIO as GPIO
+#import GPIOmock as GPIO
+import threading
+import time
+import random
+import os
+from subprocess import call
 
-# green, red, blue, yellow --- GPIO pin numbers for LEDs and buttons
-LIGHTS = [33, 37, 35, 31]  #GPIO pins for LEDs
-BUTTONS = [11, 15, 13, 7]  # GPIO pins for buttons
+# green, red, blue, yellow
+LIGHTS = [33, 37, 35, 31]
+BUTTONS = [11, 15, 13, 7]
 
-
-speed = 0.25  #speed of the game.
+# values you can change that affect game play
+speed = 0.25
 use_sounds = False
 
+# flags used to signal game status
 is_displaying_pattern = False
 is_won_current_level = False
 is_game_over = False
 
-current_level = 1 
+# game state
+current_level = 1
 current_step_of_level = 0
 pattern = []
-difficulty_level = "easy"
 
-#game logic and gpio information
-'''def play_note(note):  #plays notes- not using- 
-    if use_sounds:
-        call(["sonic_pi", "play :" + note])'''
+
 
 def initialize_gpio():
     GPIO.setmode(GPIO.BOARD)
-    GPIO.setup(LIGHTS, GPIO.OUT, initial=GPIO.LOW) #set up LEDs as output
-    GPIO.setup(BUTTONS, GPIO.IN, pull_up_down=GPIO.PUD_DOWN) # set up buttons as inputs with pull down resistors
-    for button_pin in BUTTONS:
-        GPIO.add_event_detect(button_pin, GPIO.RISING, callback=flash_led_for_button, bouncetime=200)
-
-def verify_player_selection(channel):#checks to see if the right button was pressed
-    global current_step_of_level, current_level, is_won_current_level, is_game_over
-    if not is_displaying_pattern and not is_won_current_level and not is_game_over:
-        if difficulty_level == "hard" and isinstance (pattern[current_step_of_level],tuple): 
-            expected_buttons = pattern[current_step_of_level] #this will check if this level has two buttons to press/ if so it starts a timer that both buttons have to be pressed within
-            start_time = time.time()
-            second_button_pressed = False
-            while time.time() - start_time < 0.2: # 0.2 seconds for the second button in the PAIR to be pressed, we might need to increase this depending on the lag of the hardware
-                if GPIO.input(expected_buttons[1]) == GPIO.HIGH:
-                    second_button_pressed = True
-                    break
-            if GPIO.input(expected_buttons[0])== GPIO.HIGH and second_button_pressed:
-                current_step_of_level +=1 #increases level if successful
-                if current_step_of_level>= current_level:
-                    current_level +=1
-                    is_won_current_level = True
-            else: is_game_over = True #game over if level not successful
-        else:
-            
-            #global current_step_of_level, current_level, is_won_current_level, is_game_over
-            #keeps going only if the pattern is not being displayed, the level isn't won yet, and the game isn't over
-            if not is_displaying_pattern and not is_won_current_level and not is_game_over:
-                flash_led_for_button(channel)  # Flash the LED associated with the button.
-                #checks if the button pressed is the correct
-                if channel == BUTTONS[pattern[current_step_of_level]]:
-                    current_step_of_level += 1  #move to next step
-            
-                    if current_step_of_level >= current_level:
-                        current_level += 1  #increase the level
-                        is_won_current_level = True #player wins if level is complete
-                else:
-                    is_game_over = True  #if the wrong button is pressed, the game is over
+    GPIO.setup(LIGHTS, GPIO.OUT, initial=GPIO.LOW) # set up LEDs as output pins
+    GPIO.setup(BUTTONS, GPIO.IN, pull_up_down=GPIO.PUD_DOWN) # set up buttons as input pins with pull down resistors
+    for i in range(4):
+        GPIO.add_event_detect(BUTTONS[i], GPIO.FALLING, verify_player_selection, 400 if use_sounds else 250)
 
 def flash_led_for_button(button_channel):
- 
+    try:
+        button_index = BUTTONS.index(button_channel)
+        if 0 <= button_index < len(LIGHTS):
+            led_pin = LIGHTS[button_index]
+            GPIO.output(led_pin, GPIO.HIGH)  # Turn on the corresponding LED
+            time.sleep(0.1)  # Keep the LED on for a short duration
+            GPIO.output(led_pin, GPIO.LOW)  # Turn off the LED
+        
+        else:
+            print("Button channel index out of range.")
+    except ValueError:
+        print("Button channel not found in BUTTONS list.")
     led = LIGHTS[BUTTONS.index(button_channel)]
-    GPIO.output(led, GPIO.HIGH)  #LED on
-    time.sleep(0.1)  #LED on for 0.1 seconds
-    GPIO.output(led, GPIO.LOW)  #LED off
+    GPIO.output(led, GPIO.HIGH)
+    time.sleep(0.1)
+    GPIO.output(led, GPIO.LOW)
+
+def verify_player_selection(channel):
+    global current_step_of_level, current_level, is_won_current_level, is_game_over
+    if not is_displaying_pattern and not is_won_current_level and not is_game_over:
+        flash_led_for_button(channel)
+        if channel == BUTTONS[pattern[current_step_of_level]]:
+            current_step_of_level += 1
+            if current_step_of_level >= current_level:
+                current_level += 1
+                is_won_current_level = True
+        else:
+            is_game_over = True
+
+
+
+
 
 def add_new_color_to_pattern():
-    # This function adds a new random color to the pattern that the player needs to repeat.
-    global is_won_current_level, current_step_of_level  # Use the global variables.
-    is_won_current_level = False  # Reset the flag since a new level is starting.
-    current_step_of_level = 0  # Reset the step counter for the new level.
-    next_color = random.randint(0, 3)  # Choose a random color between 0 and 3.
-    pattern.append(next_color) # Add the new color to the pattern.
-    if difficulty_level == "hard" and current_level % 3 == 0:
-        next_color = random.randint(0,3)
-        while next_color == pattern [-1]:
-            next_color= random.randint(0,3)
-        pattern.append((pattern[-1], next_color)) #?Adds tuple to represent button presses at the same time... ** Came from an outside source, did not know how to get two buttons to register at once**
-    
+    global is_won_current_level, current_step_of_level
+    is_won_current_level = False
+    current_step_of_level = 0
+    next_color = random.randint(0, 3)
+    pattern.append(next_color)
+
+
 def display_pattern_to_player():
-    # displays the current pattern to the player using the LEDs
     global is_displaying_pattern
     is_displaying_pattern = True
-    GPIO.output(LIGHTS, GPIO.LOW)  #turns off all LEDs before starting
+    GPIO.output(LIGHTS, GPIO.LOW)
     for i in range(current_level):
-        GPIO.output(LIGHTS[pattern[i]], GPIO.HIGH) #LED on
-        time.sleep(speed) 
-        GPIO.output(LIGHTS[pattern[i]], GPIO.LOW)  #LED off
+        GPIO.output(LIGHTS[pattern[i]], GPIO.HIGH)
+        time.sleep(speed)
+        GPIO.output(LIGHTS[pattern[i]], GPIO.LOW)
         time.sleep(speed)
     is_displaying_pattern = False
 
+
 def wait_for_player_to_repeat_pattern():
-    is_game_over = False
-    if difficulty_level == "hard": # hard verison should only allow 5 seconds for player to respond correctly
-        start_time = time.time()
-        while not is_won_current_level and not is_game_over:
-            if time.time() - start_time > 7:
-                is_game_over = True
-                print ("Your time is up.")
-            time.sleep(0.2)
-    else:
-    # Original version time
-        while not is_won_current_level and not is_game_over:  #keeps going until the level is won or the game's over
-            time.sleep(0.2)
+    while not is_won_current_level and not is_game_over:
+        time.sleep(0.1)
+
 
 def reset_board_for_new_game():
-    
     global is_displaying_pattern, is_won_current_level, is_game_over
     global current_level, current_step_of_level, pattern
-    
     is_displaying_pattern = False
     is_won_current_level = False
     is_game_over = False
     current_level = 1
     current_step_of_level = 0
     pattern = []
-    GPIO.output(LIGHTS, GPIO.LOW)  #turns off all LEDs. ?? maybe
+    GPIO.output(LIGHTS, GPIO.LOW)
+
 
 def start_game():
-    is_game_over = False
-    global difficulty_level
-    #contains the main game loop.
-    while True:  #allow for multiple rounds of the game
-        print("Select difficulty level: Easy (e) or Hard (h)")
-        difficulty_input = input ("Enter 'e' for easy or 'h' for Hard: ")
-        if difficulty_input in ["E", "e"]:
-            difficulty_level = "easy"
-        elif difficulty_input in ["H", "h"]:
-            difficulty_level = "hard"
-        else: print("Defaulting to easy")
-            
+    while True:
         add_new_color_to_pattern()
         display_pattern_to_player()
         wait_for_player_to_repeat_pattern()
-        if is_game_over: 
+        if is_game_over:
             print("Game Over! Your max score was {} colors!\n".format(current_level-1))
             play_again = input("Enter 'Y' to play again, or just press [ENTER] to exit.\n")
-            if play_again in ["Y", "y"]:
+            if play_again == "Y" or play_again == "y":
                 reset_board_for_new_game()
                 print("Begin new round!\n")
             else:
                 print("Thanks for playing!\n")
                 break
-        time.sleep(2)  #time it takes to start next level
+        time.sleep(2)
+
 
 def start_game_monitor():
     t = threading.Thread(target=start_game)
     t.daemon = True
     t.start()
     t.join()
+
 
 def main():
     try:
@@ -168,6 +138,7 @@ def main():
         os.system('cls' if os.name == 'nt' else 'clear')
         print("Begin new round!\n")
         initialize_gpio()
+        time.sleep(2) # 2 second start delay
         start_game_monitor()
     finally:
         GPIO.cleanup()
