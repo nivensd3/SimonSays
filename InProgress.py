@@ -7,9 +7,9 @@ import random
 import os
 from subprocess import call
 
-# green, red, blue, yellow
-LIGHTS = [33, 37, 35, 31]
-BUTTONS = [11, 15, 13, 7]
+# green, red, yellow, blue
+LIGHTS = [33, 40, 36, 29]
+BUTTONS = [11, 37, 15, 7]
 
 # values you can change that affect game play
 speed = 0.25
@@ -32,7 +32,7 @@ def initialize_gpio():
     GPIO.setup(LIGHTS, GPIO.OUT, initial=GPIO.LOW) # set up LEDs as output pins
     GPIO.setup(BUTTONS, GPIO.IN, pull_up_down=GPIO.PUD_DOWN) # set up buttons as input pins with pull down resistors
     for i in range(4):
-        GPIO.add_event_detect(BUTTONS[i], GPIO.FALLING, verify_player_selection, 400 if use_sounds else 250)
+        GPIO.add_event_detect(BUTTONS[i], GPIO.RISING, verify_player_selection, 400 if use_sounds else 150)
 
 def flash_led_for_button(button_channel):
     try:
@@ -40,7 +40,7 @@ def flash_led_for_button(button_channel):
         if 0 <= button_index < len(LIGHTS):
             led_pin = LIGHTS[button_index]
             GPIO.output(led_pin, GPIO.HIGH)  # Turn on the corresponding LED
-            time.sleep(0.1)  # Keep the LED on for a short duration
+            time.sleep(0.05)  # Keep the LED on for a short duration
             GPIO.output(led_pin, GPIO.LOW)  # Turn off the LED
         
         else:
@@ -74,6 +74,7 @@ def add_new_color_to_pattern():
     current_step_of_level = 0
     next_color = random.randint(0, 3)
     pattern.append(next_color)
+    print(f'Pattern: {pattern}') #0- green, 1-red, 2-yellow, 3-blue
 
 
 def display_pattern_to_player():
@@ -90,7 +91,7 @@ def display_pattern_to_player():
 
 def wait_for_player_to_repeat_pattern():
     while not is_won_current_level and not is_game_over:
-        time.sleep(0.1)
+        time.sleep(0.5)
 
 
 def reset_board_for_new_game():
